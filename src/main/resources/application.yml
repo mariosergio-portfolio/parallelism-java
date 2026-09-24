@@ -1,0 +1,14 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: portfolio
+
+springdoc:
+  swagger-ui:
+    tags-sorter: alpha
+
+spring.task.scheduling:
+  pool:
+    size: 1
