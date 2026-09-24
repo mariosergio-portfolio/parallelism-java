@@ -1,4 +1,4 @@
-# Portfolio — Java Parallelism Exploration
+# Java Parallelism Exploration
 
 A Spring Boot REST API built with **Java 21** that experiments with concurrency strategies side-by-side:
 sequential execution, fixed-size thread pools, and virtual threads.
