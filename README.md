@@ -57,7 +57,9 @@ Every request captures live JVM metrics so stress tests produce real, comparable
 ---
 
 ## REST API endpoints
-![img.png](swagger-api-img.png)
+![img.png](docs/swagger-api-img.png)
+
+---
 
 ## Modules
 
