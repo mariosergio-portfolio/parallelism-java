@@ -56,6 +56,9 @@ Every request captures live JVM metrics so stress tests produce real, comparable
 
 ---
 
+## REST API endpoints
+![img.png](swagger-api-img.png)
+
 ## Modules
 
 ### `/api/counter` — Parallel Counter
@@ -160,6 +163,51 @@ The key difference: a **platform thread** blocks its OS thread during `Thread.sl
 a **virtual thread** is unmounted from the carrier thread and the carrier becomes free
 to run other virtual threads. This makes virtual threads ideal for I/O-bound workloads
 at high concurrency.
+
+---
+
+## Scalability Characteristics
+
+The two endpoints have opposite resource profiles because they represent opposite workload types.
+
+| | `/api/counter` | `/api/prime` |
+|---|---|---|
+| **Workload type** | I/O-bound | CPU-bound |
+| **Time spent** | Sleeping (`Thread.sleep`) | Computing (`isPrime` math loop) |
+| **CPU while waiting** | ~0 % — virtual thread is unmounted | 100 % per active platform thread |
+| **Memory per unit** | ~few KB (virtual thread) vs ~1 MB (platform thread) | ~1 MB per platform thread + shared `Map` on heap |
+| **Shared mutable state** | None — each task writes its own result | `primes` list protected by synchronisation |
+| **Contention risk** | None | Lock contention grows with worker count |
+| **Virtual-thread mode (`-1`)** | Optimal — unmounted threads free the carrier | Not offered — would saturate CPU with no gain |
+
+### Counter (I/O-bound)
+
+```
+parallelProcess=1   → N × delay ms           (all tasks serialised)
+parallelProcess=N   → ⌈N/workers⌉ × delay    (bounded by fixed pool size)
+parallelProcess=-1  → ~delay ms              (optimal: all tasks truly concurrent, near-zero CPU cost)
+
+Adding virtual threads beyond N tasks: free — unmounted VTs consume no carrier thread or OS thread.
+Bottleneck: wall-clock latency, not CPU. More virtual threads always help up to n=N.
+```
+
+### Prime (CPU-bound)
+
+```
+parallelProcess=1   → full sequential scan time
+parallelProcess=N   → scan time / N           (only up to available physical cores)
+parallelProcess=-1  → N/A
+
+Adding workers beyond the number of CPU cores: zero throughput gain.
+Shared-state synchronisation and scheduler overhead start eroding the speedup.
+Sweet spot: parallelProcess ≈ Runtime.getRuntime().availableProcessors()
+```
+
+### Synchronisation Overhead
+
+**Counter** — zero shared mutable state. Each virtual thread writes to its own pre-allocated slot in the results list (`results[i]`). No locking, no contention. The `-1` mode spawns one virtual thread per task via `Executors.newVirtualThreadPerTaskExecutor()`; when the thread hits `Thread.sleep()` it is unmounted from the carrier thread, which immediately picks up another virtual thread.
+
+**Prime** — has genuine write contention on the shared primes collection (protected by `AtomicBoolean` + synchronised list). Every found prime checks the stop flag and appends to the list. At high worker counts this shared state becomes a **contention hotspot** that limits parallel speedup — classic Amdahl's Law behaviour on a CPU-bound task.
 
 ---
 
